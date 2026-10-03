@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import json
+import os
+import stat
+
+from psdline.app import build_platform
 from psdline.console.api import Api
 from psdline.console.pages import PAGE_PATHS, render_page
 from psdline.console.router import Router
@@ -107,6 +112,11 @@ def test_api_readiness_and_queries(platform):
     assert status == 200 and ready["ready"] is True
     status, audit = api.handle("GET", "/api/audit", {"limit": "10"}, {})
     assert status == 200 and audit["entries"]
+    assert audit["integrity"]["healthy"] is True
+    status, verify = api.handle("GET", "/api/audit/verify", {}, {})
+    assert status == 200 and verify["ok"] is True
+    status, segment = api.handle("GET", "/api/audit/segments/0", {}, {})
+    assert status == 200 and segment["segment"] == 0
     status, timeline = api.handle("GET", "/api/timeline", {"train_id": "T01"}, {})
     assert status == 200 and timeline["timeline"][0]["kind"] == "arrival"
     status, store = api.handle("GET", "/api/store", {}, {})
@@ -115,6 +125,39 @@ def test_api_readiness_and_queries(platform):
     assert status == 200 and namespace["line"] == "L1"
     status, gate = api.handle("GET", "/api/doors/ST1-G01-01", {}, {})
     assert status == 200 and gate["gate"]["station"] == "ST1"
+
+def test_api_reports_audit_tampering_and_blocks_write(platform):
+    platform.arrive("T01", "ST1", 0)
+    path = os.path.join(platform.store.root, "audit-00000.jsonl")
+    os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+    lines = open(path, encoding="utf-8").read().splitlines()
+    tampered = json.loads(lines[0])
+    tampered["record"]["kind"] = "tampered"
+    lines[0] = json.dumps(tampered, ensure_ascii=False)
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write("\n".join(lines) + "\n")
+
+    fresh = build_platform(
+        platform.config,
+        clock=platform.clock,
+        storage_root=platform.store.root,
+    )
+    api = Api(fresh)
+    status, verify = api.handle("GET", "/api/audit/verify", {}, {})
+    assert status == 200
+    assert verify["ok"] is False
+    assert verify["first_bad"]["kind"] == "digest_mismatch"
+    status, status_payload = api.handle("GET", "/api/status", {}, {})
+    assert status == 200
+    assert status_payload["audit"]["chain_healthy"] is False
+    status, blocked = api.handle(
+        "POST",
+        "/api/arrive",
+        {},
+        {"train_id": "T02", "station_id": "ST1", "position_m": 0},
+    )
+    assert status == 500
+    assert "异常（已阻断写入）" in render_page("/alarms", fresh)
 
 
 def test_pages_render_for_every_path(platform):

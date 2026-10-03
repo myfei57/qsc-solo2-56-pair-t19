@@ -70,6 +70,12 @@ def test_with_storage_root_replaces_directory():
         with_storage_root(default_config(), "")
 
 
+def test_audit_config_accepts_legacy_segment_key():
+    payload = config_to_mapping(default_config())
+    payload["audit"] = {"journal_segment": 256}
+    assert config_from_mapping(payload).audit.archive_segment == 256
+
+
 def test_console_section_defaults():
     section = ConsoleSection()
     assert (section.host, section.port) == ("127.0.0.1", 8080)

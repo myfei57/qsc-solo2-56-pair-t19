@@ -58,7 +58,7 @@ from .station import (
     nearest_zone,
     spread_m,
 )
-from .store import CommandLog, JsonStore, JsonlJournal, StoreMetrics
+from .store import ChainedJsonlJournal, CommandLog, JsonStore, StoreMetrics
 from .telemetry import TrendBuffer
 from .train import (
     AlignRegistry,
@@ -98,7 +98,11 @@ class Platform:
         self.audit = AuditLog(
             self.clock,
             self.bus,
-            JsonlJournal(store.root, "audit", segment_limit=self.config.audit.journal_segment),
+            ChainedJsonlJournal(
+                store.root,
+                "audit",
+                segment_limit=self.config.audit.archive_segment,
+            ),
         )
         self.namespace = Namespace(
             self.config.namespace.line, list(self.config.namespace.stations)

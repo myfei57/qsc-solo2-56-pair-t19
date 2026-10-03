@@ -168,6 +168,7 @@ def _alarm_page(platform: Platform) -> str:
     status = platform.status()
     interlock = status["interlock"]
     audit = status["audit"]
+    issue = audit.get("issue") or {}
     body = _table(
         "联锁与故障",
         [
@@ -177,6 +178,10 @@ def _alarm_page(platform: Platform) -> str:
             ("可发车", "是" if interlock["can_release_depart"] else "否"),
             ("审计条数", audit["entries"]),
             ("审计分段", audit["segments"]),
+            ("已归档段", audit["sealed_segments"]),
+            ("审计链", "正常" if audit["chain_healthy"] else "异常（已阻断写入）"),
+            ("首个断链点", issue.get("message", "-")),
+            ("崩溃隔离记录", audit["quarantined_parts"]),
         ],
     )
     body += _table(

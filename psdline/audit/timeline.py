@@ -21,6 +21,9 @@ def build_timeline(entries: list[AuditEntry], train_id: str = "", limit: int = 5
                 "station_id": entry.station_id,
                 "at": entry.at,
                 "detail": dict(entry.detail),
+                "seq": entry.seq,
+                "prev_digest": entry.prev_digest,
+                "digest": entry.digest,
             }
         )
     return steps

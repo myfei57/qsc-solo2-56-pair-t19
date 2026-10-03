@@ -97,9 +97,9 @@ class QuotaSection:
 
 @dataclass(frozen=True)
 class AuditSection:
-    """审计流水分段。"""
+    """审计哈希链分段归档：每多少条记录固定一次段摘要。"""
 
-    journal_segment: int = 512
+    archive_segment: int = 512
 
 
 @dataclass(frozen=True)
@@ -167,8 +167,8 @@ class PlatformConfig:
             raise ConfigError("锁定比例上限必须落在 (0, 1]", component="config")
         if self.quota.arrival_limit <= 0 or self.quota.depart_limit <= 0:
             raise ConfigError("运行配额必须为正", component="config")
-        if self.audit.journal_segment <= 0:
-            raise ConfigError("审计分段长度必须为正", component="config")
+        if self.audit.archive_segment <= 0:
+            raise ConfigError("审计归档段长度必须为正", component="config")
         if not 0 < self.console.port <= 65535:
             raise ConfigError("控制台端口必须落在 1..65535", component="config")
         return self
@@ -222,6 +222,12 @@ def config_from_mapping(payload: dict) -> PlatformConfig:
 
     if not isinstance(payload, dict):
         raise ConfigError("配置必须是一个 JSON 对象", component="config")
+    audit_payload = payload.get("audit")
+    if isinstance(audit_payload, dict) and "archive_segment" not in audit_payload:
+        audit_payload = {
+            **audit_payload,
+            "archive_segment": audit_payload.get("journal_segment", 512),
+        }
     config = PlatformConfig(
         platform=_section(PlatformSection, payload.get("platform")),
         namespace=_section(NamespaceSection, payload.get("namespace")),
@@ -232,7 +238,7 @@ def config_from_mapping(payload: dict) -> PlatformConfig:
         signal=_section(SignalSection, payload.get("signal")),
         interlock=_section(InterlockSection, payload.get("interlock")),
         quota=_section(QuotaSection, payload.get("quota")),
-        audit=_section(AuditSection, payload.get("audit")),
+        audit=_section(AuditSection, audit_payload),
         console=_section(ConsoleSection, payload.get("console")),
     )
     return config.validate()

@@ -58,6 +58,17 @@ class StoreMetrics:
             ]
         )
 
+    def manifests(self, topic: str) -> int:
+        """统计某主题已固定的归档摘要数量。"""
+
+        return len(
+            [
+                name
+                for name in os.listdir(self._root)
+                if name.startswith(f"{topic}-") and name.endswith(".manifest.json")
+            ]
+        )
+
     def summary(self) -> dict:
         """汇总存储用量。"""
 
@@ -67,4 +78,5 @@ class StoreMetrics:
             "files": overall.files,
             "bytes": overall.bytes,
             "audit_segments": self.segments("audit"),
+            "audit_manifests": self.manifests("audit"),
         }

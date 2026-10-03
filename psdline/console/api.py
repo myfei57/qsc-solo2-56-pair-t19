@@ -67,6 +67,8 @@ class Api:
         add("GET", "/api/interlock", lambda params, body: self._platform.status()["interlock"])
         add("GET", "/api/gaps", lambda params, body: self._platform.status()["gaps"])
         add("GET", "/api/quota", lambda params, body: self._platform.status()["quota"])
+        add("GET", "/api/audit/verify", self._audit_verify)
+        add("GET", "/api/audit/segments/{segmentID}", self._audit_segment)
         add("GET", "/api/audit", self._audit)
         add("GET", "/api/timeline", self._timeline)
         add("GET", "/api/trend", self._trend)
@@ -108,7 +110,26 @@ class Api:
         try:
             payload = handler(merged, body)
         except RailError as error:
-            self._platform.note_error(error)
+            if error.component == "store":
+                return (
+                    500,
+                    {
+                        "error": type(error).__name__,
+                        **error.as_record(),
+                        "audit_chain_healthy": self._platform.audit.journal.healthy,
+                    },
+                )
+            try:
+                self._platform.note_error(error)
+            except RailError as audit_error:
+                return (
+                    500,
+                    {
+                        "error": type(audit_error).__name__,
+                        **audit_error.as_record(),
+                        "original_error": error.as_record(),
+                    },
+                )
             status = 409 if error.component != "console" else 400
             return status, {"error": type(error).__name__, **error.as_record()}
         except (TypeError, ValueError) as error:
@@ -136,10 +157,19 @@ class Api:
 
     def _audit(self, params: dict, body: dict) -> dict:
         entries = self._platform.audit.list()
+        limit = _as_int(params, "limit", 50)
         return {
-            "entries": [entry.as_dict() for entry in entries[-int(params.get("limit", 50)) :]],
+            "entries": [entry.as_dict() for entry in entries[-limit:]],
             "summary": self._platform.audit.summary(),
+            "integrity": self._platform.audit.integrity(),
         }
+
+    def _audit_verify(self, params: dict, body: dict) -> dict:
+        return self._platform.audit.verify()
+
+    def _audit_segment(self, params: dict, body: dict) -> dict:
+        segment = _as_int(params, "segmentID", 0)
+        return self._platform.audit.verify_segment(segment)
 
     def _timeline(self, params: dict, body: dict) -> dict:
         train_id = str(params.get("train_id", ""))
@@ -181,7 +211,7 @@ class Api:
             "gates": bool(self._platform.gates.list()),
             "quota_arrival": self._platform.quotas.status("arrival")["configured"],
             "quota_depart": self._platform.quotas.status("depart")["configured"],
-            "audit_log": self._platform.audit.journal.count() >= 0,
+            "audit_chain": self._platform.audit.journal.healthy,
         }
         return {"ready": all(checks.values()), "checks": checks}
 
