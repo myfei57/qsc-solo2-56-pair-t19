@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .entry import AuditEntry
+from .hash import short
 
 
 def build_timeline(entries: list[AuditEntry], train_id: str = "", limit: int = 50) -> list[dict]:
@@ -16,10 +17,13 @@ def build_timeline(entries: list[AuditEntry], train_id: str = "", limit: int = 5
             {
                 "step": index,
                 "id": entry.id,
+                "seq": entry.seq,
                 "kind": entry.kind,
                 "train_id": entry.train_id,
                 "station_id": entry.station_id,
                 "at": entry.at,
+                "prev": short(entry.prev),
+                "digest": short(entry.digest),
                 "detail": dict(entry.detail),
             }
         )

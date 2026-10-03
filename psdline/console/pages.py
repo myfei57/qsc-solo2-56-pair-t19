@@ -163,11 +163,25 @@ def _door_page(platform: Platform) -> str:
 
 
 def _alarm_page(platform: Platform) -> str:
-    """告警页：故障、锁定比例与审计时间线。"""
+    """告警页：故障、锁定比例、审计链与时间线。"""
 
     status = platform.status()
     interlock = status["interlock"]
     audit = status["audit"]
+    chain = audit["chain"]
+    if chain["broken"]:
+        first = chain["first_mismatch"] or {}
+        chain_line = (
+            f"断链 @段 {first.get('segment')} 偏移 {first.get('offset')} "
+            f"序号 {first.get('seq')}（{first.get('reason')}）"
+        )
+        chain_class = "alarm"
+    else:
+        chain_line = (
+            f"完整 head_seq={chain['head_seq']} 封存段={chain['sealed_segments']}"
+            f" 遗留段={chain['legacy_segments']}"
+        )
+        chain_class = "ok"
     body = _table(
         "联锁与故障",
         [
@@ -178,6 +192,14 @@ def _alarm_page(platform: Platform) -> str:
             ("审计条数", audit["entries"]),
             ("审计分段", audit["segments"]),
         ],
+    )
+    body += (
+        '<h2>审计链</h2><table>'
+        f'<tr><th>状态</th><td class="{chain_class}">{escape(chain_line)}</td></tr>'
+        f'<tr><th>链头摘要</th><td>{escape(str(chain["head_digest"]))}</td></tr>'
+        f'<tr><th>活动段</th><td>{escape(str(chain["active_segment"]))} '
+        f'断链策略={escape("阻断写入" if chain["fail_closed"] else "只标记")}</td></tr>'
+        "</table>"
     )
     body += _table(
         "间隙探测",
@@ -190,7 +212,13 @@ def _alarm_page(platform: Platform) -> str:
     timeline = platform.snapshot()["timeline"]
     body += _table(
         "最近审计",
-        [(f"{item['step']}. {item['kind']}", f"{item['train_id']} {item['station_id']}") for item in timeline]
+        [
+            (
+                f"#{item['seq']} {item['step']}. {item['kind']}",
+                f"{item['train_id']} {item['station_id']} {item['digest']}",
+            )
+            for item in timeline
+        ]
         or [("暂无", "-")],
     )
     return _shell("告警控制台", body)

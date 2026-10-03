@@ -97,9 +97,15 @@ class QuotaSection:
 
 @dataclass(frozen=True)
 class AuditSection:
-    """审计流水分段。"""
+    """审计流水分段与断链策略。
+
+    ``journal_segment`` 是每条归档段的条数；段满自动封存，控制台与命令行也能
+    手动归档。``fail_closed`` 决定校验发现断链时是否阻断后续审计写入：默认
+    ``False``（只标记异常，审计不阻断联锁控制），离线封存场景可置 ``True``。
+    """
 
     journal_segment: int = 512
+    fail_closed: bool = False
 
 
 @dataclass(frozen=True)

@@ -99,6 +99,8 @@ class Platform:
             self.clock,
             self.bus,
             JsonlJournal(store.root, "audit", segment_limit=self.config.audit.journal_segment),
+            store=store,
+            fail_closed=self.config.audit.fail_closed,
         )
         self.namespace = Namespace(
             self.config.namespace.line, list(self.config.namespace.stations)
@@ -342,6 +344,7 @@ class Platform:
         summary = self._record_operation(op_id, "stop", report)
         self._operations += 1
         self._persist()
+        self.audit.flush()
         return {**report, **summary}
 
     # ---- 到发编排 -----------------------------------------------------

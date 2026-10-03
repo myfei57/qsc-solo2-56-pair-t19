@@ -45,7 +45,8 @@
     "depart_limit": 1000
   },
   "audit": {
-    "journal_segment": 512
+    "journal_segment": 512,
+    "fail_closed": false
   },
   "console": {
     "host": "127.0.0.1",

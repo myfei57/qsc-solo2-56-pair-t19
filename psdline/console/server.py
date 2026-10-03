@@ -132,6 +132,8 @@ class ConsoleServer:
             self._thread.join(timeout=5)
         self._server = None
         self._thread = None
+        # 关停前把链头状态固定一次，巡检直接读链头文档即可。
+        self._platform.audit.flush()
 
 
 def probe_endpoints(base_url: str, paths: list[str]) -> dict:

@@ -117,6 +117,45 @@ def test_api_readiness_and_queries(platform):
     assert status == 200 and gate["gate"]["station"] == "ST1"
 
 
+def test_api_audit_chain_endpoints(platform):
+    api = Api(platform)
+    platform.arrive("T01", "ST1", 0)
+    status, chain = api.handle("GET", "/api/audit/chain", {}, {})
+    assert status == 200 and chain["chain"]["broken"] is False
+    assert chain["chain"]["head_seq"] >= 1
+    status, verify = api.handle("GET", "/api/audit/verify", {}, {})
+    assert status == 200 and verify["ok"] is True
+    status, archived = api.handle("POST", "/api/audit/archive", {}, {})
+    assert status == 200 and archived["rolled"] is True
+    status, segment = api.handle("GET", "/api/audit/chain", {"segment": "0"}, {})
+    assert status == 200 and segment["ok"] is True
+
+
+def test_api_audit_chain_break_marks_not_ready(platform):
+    import json
+
+    api = Api(platform)
+    platform.arrive("T01", "ST1", 0)
+    platform.audit.archive()
+    path = platform.audit.journal.segment_path(0)
+    lines = open(path, encoding="utf-8").read().splitlines()
+    record = json.loads(lines[0])
+    record["kind"] = "tampered"
+    lines[0] = json.dumps(record, ensure_ascii=False)
+    open(path, "w", encoding="utf-8").write("\n".join(lines) + "\n")
+    # 重新构造平台以触发启动重放发现断链。
+    from psdline.app import build_platform
+    from psdline.config import default_config
+
+    rebuilt = build_platform(default_config(), storage_root=platform.store.root)
+    rebuilt_api = Api(rebuilt)
+    status, verify = rebuilt_api.handle("GET", "/api/audit/verify", {}, {})
+    assert status == 200 and verify["ok"] is False
+    status, ready = rebuilt_api.handle("GET", "/api/readiness", {}, {})
+    assert ready["checks"]["audit_chain"] is False
+    assert ready["ready"] is False
+
+
 def test_pages_render_for_every_path(platform):
     platform.arrive("T01", "ST1", 0)
     for path in PAGE_PATHS:

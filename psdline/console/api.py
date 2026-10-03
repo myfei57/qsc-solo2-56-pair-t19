@@ -68,6 +68,9 @@ class Api:
         add("GET", "/api/gaps", lambda params, body: self._platform.status()["gaps"])
         add("GET", "/api/quota", lambda params, body: self._platform.status()["quota"])
         add("GET", "/api/audit", self._audit)
+        add("GET", "/api/audit/chain", self._audit_chain)
+        add("GET", "/api/audit/verify", self._audit_verify)
+        add("POST", "/api/audit/archive", self._audit_archive)
         add("GET", "/api/timeline", self._timeline)
         add("GET", "/api/trend", self._trend)
         add("GET", "/api/store", self._store)
@@ -141,6 +144,32 @@ class Api:
             "summary": self._platform.audit.summary(),
         }
 
+    def _audit_chain(self, params: dict, body: dict) -> dict:
+        """返回链头、封存段与断链状态（廉价，不做全盘重放）。"""
+
+        audit = self._platform.audit
+        segment_param = params.get("segment")
+        if segment_param is not None and str(segment_param) != "":
+            try:
+                index = int(segment_param)
+            except (TypeError, ValueError) as error:
+                raise RailError("segment 必须是非负整数", component="console") from error
+            try:
+                return audit.verify_segment(index)
+            except ValueError as error:
+                raise RailError(str(error), component="console") from error
+        return {"chain": audit.chain_status()}
+
+    def _audit_verify(self, params: dict, body: dict) -> dict:
+        """从创世重放整链并对照全部锚点（巡检入口，只读）。"""
+
+        return self._platform.audit.verify()
+
+    def _audit_archive(self, params: dict, body: dict) -> dict:
+        """手动封存当前活动审计段，把段头摘要固定进锚点。"""
+
+        return self._platform.audit.archive()
+
     def _timeline(self, params: dict, body: dict) -> dict:
         train_id = str(params.get("train_id", ""))
         return {"timeline": build_timeline(self._platform.audit.list(), train_id)}
@@ -176,12 +205,14 @@ class Api:
         )
 
     def _readiness(self, params: dict, body: dict) -> dict:
+        chain = self._platform.audit.chain_status()
         checks = {
             "stations": bool(self._platform.stations.list()),
             "gates": bool(self._platform.gates.list()),
             "quota_arrival": self._platform.quotas.status("arrival")["configured"],
             "quota_depart": self._platform.quotas.status("depart")["configured"],
             "audit_log": self._platform.audit.journal.count() >= 0,
+            "audit_chain": not chain["broken"],
         }
         return {"ready": all(checks.values()), "checks": checks}
 

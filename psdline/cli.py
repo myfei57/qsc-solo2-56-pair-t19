@@ -8,6 +8,8 @@
             前的真实运行检查；
 ``status``  打印当前状态快照；
 ``config``  打印生效配置；
+``audit``   审计链巡检：``chain`` 看链头与断链标记、``verify`` 从创世重放整链
+            校验、``archive`` 手动封存当前段；
 ``reset``   清掉落盘的平台计数。
 """
 
@@ -182,6 +184,39 @@ def _cmd_reset(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_audit(args: argparse.Namespace) -> int:
+    platform = _build(args)
+    audit = platform.audit
+    if args.audit_action == "chain":
+        payload: dict[str, object] = {"chain": audit.chain_status()}
+        if args.segment is not None:
+            payload["segment"] = audit.verify_segment(args.segment)
+        _dump(payload)
+        return 0
+    if args.audit_action == "archive":
+        _dump(audit.archive())
+        return 0
+    report = audit.verify()
+    _dump(report)
+    first = report.get("first_mismatch")
+    if not report["ok"]:
+        if first:
+            print(
+                f"审计链校验未通过：段 {first['segment']} 偏移 {first['offset']} "
+                f"序号 {first['seq']} 记录 {first['entry_id']} 原因 {first['reason']}",
+                file=sys.stderr,
+            )
+        else:
+            print("审计链校验未通过", file=sys.stderr)
+        return 1
+    print(
+        f"审计链校验通过：{report['segments_checked']} 段 / "
+        f"{report['records_checked']} 条，head_seq={report['head_seq']}",
+        file=sys.stderr,
+    )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     """构造命令行解析器。"""
 
@@ -213,6 +248,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     config = sub.add_parser("config", help="打印生效配置", parents=[common])
     config.set_defaults(func=_cmd_config)
+
+    audit = sub.add_parser("audit", help="审计链巡检与归档", parents=[common])
+    audit.add_argument(
+        "audit_action",
+        choices=("verify", "archive", "chain"),
+        nargs="?",
+        default="verify",
+        help="verify=整链校验（默认），archive=手动封存，chain=只看链头状态",
+    )
+    audit.add_argument("--segment", type=int, default=None, help="chain 时按段号校验单段")
+    audit.set_defaults(func=_cmd_audit)
 
     reset = sub.add_parser("reset", help="清掉落盘的平台计数", parents=[common])
     reset.set_defaults(func=_cmd_reset)
